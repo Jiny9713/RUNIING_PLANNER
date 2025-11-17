@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date
 from typing import Dict, List, Union
 
 import streamlit as st
@@ -6,20 +6,129 @@ import streamlit as st
 from planner_core import PlanConfig, generate_week_plan
 
 
+def _parse_time(raw: str) -> int:
+    """Convert HH:MM:SS or MM:SS to total seconds."""
+    parts = raw.strip().split(":")
+    if not parts or not all(part.isdigit() for part in parts):
+        raise ValueError("Invalid time format")
+    values = [int(p) for p in parts]
+    if len(values) == 2:
+        minutes, seconds = values
+        hours = 0
+    elif len(values) == 3:
+        hours, minutes, seconds = values
+    else:
+        raise ValueError("Time must be MM:SS or HH:MM:SS")
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _seconds_to_hhmmss(value: float) -> str:
+    total = int(round(value))
+    hours = total // 3600
+    minutes = (total % 3600) // 60
+    seconds = total % 60
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _time_to_pace(time_str: str) -> str:
+    total_seconds = _parse_time(time_str)
+    pace_seconds = total_seconds / 42.195
+    minutes = int(pace_seconds // 60)
+    seconds = int(round(pace_seconds % 60))
+    if seconds == 60:
+        minutes += 1
+        seconds = 0
+    return f"{minutes:02d}:{seconds:02d}"
+
+
+def _pace_to_time(pace_str: str) -> str:
+    per_km_seconds = _parse_time(pace_str)
+    marathon_seconds = per_km_seconds * 42.195
+    return _seconds_to_hhmmss(marathon_seconds)
+
+
+def _init_state() -> None:
+    if "goal_time" not in st.session_state:
+        st.session_state.goal_time = "03:30:00"
+    if "goal_pace" not in st.session_state:
+        st.session_state.goal_pace = _time_to_pace(st.session_state.goal_time)
+    if "pb_time" not in st.session_state:
+        st.session_state.pb_time = "03:40:00"
+    if "pb_pace" not in st.session_state:
+        st.session_state.pb_pace = _time_to_pace(st.session_state.pb_time)
+    st.session_state.setdefault("_sync_goal", False)
+    st.session_state.setdefault("_sync_pb", False)
+
+
+def _sync_goal_from_time() -> None:
+    if st.session_state._sync_goal:
+        return
+    try:
+        pace = _time_to_pace(st.session_state.goal_time)
+    except ValueError:
+        return
+    st.session_state._sync_goal = True
+    st.session_state.goal_pace = pace
+    st.session_state._sync_goal = False
+
+
+def _sync_goal_from_pace() -> None:
+    if st.session_state._sync_goal:
+        return
+    try:
+        time_str = _pace_to_time(st.session_state.goal_pace)
+    except ValueError:
+        return
+    st.session_state._sync_goal = True
+    st.session_state.goal_time = time_str
+    st.session_state._sync_goal = False
+
+
+def _sync_pb_from_time() -> None:
+    if st.session_state._sync_pb:
+        return
+    try:
+        pace = _time_to_pace(st.session_state.pb_time)
+    except ValueError:
+        return
+    st.session_state._sync_pb = True
+    st.session_state.pb_pace = pace
+    st.session_state._sync_pb = False
+
+
+def _sync_pb_from_pace() -> None:
+    if st.session_state._sync_pb:
+        return
+    try:
+        time_str = _pace_to_time(st.session_state.pb_pace)
+    except ValueError:
+        return
+    st.session_state._sync_pb = True
+    st.session_state.pb_time = time_str
+    st.session_state._sync_pb = False
+
+
 st.set_page_config(page_title="마라톤 주간 훈련 플래너", layout="wide")
 st.title("마라톤 주간 훈련 플래너")
 st.caption("Coach.md 철학과 planner_v7 로직을 유지한 v1.0")
 
-default_race = date.today() + timedelta(weeks=10)
+_init_state()
 
 with st.sidebar:
     st.header("입력 값")
-    race_date = st.date_input("레이스 날짜", value=default_race)
+    race_date = st.date_input("레이스 날짜", value=date(2026, 3, 15))
     start_date = st.date_input("플랜 시작일", value=date.today())
     recent_weekly_km = st.number_input("최근 주간 거리 (km)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
     recent_long_km = st.number_input("최근 롱런 거리 (km)", min_value=10.0, max_value=45.0, value=26.0, step=1.0)
-    goal_marathon_time = st.text_input("목표 마라톤 기록 (HH:MM:SS)", value="03:30:00")
-    current_mp = st.text_input("현재 마라톤 페이스 (MM:SS)", value="05:10")
+
+    st.markdown("### 목표 기록")
+    st.text_input("목표 마라톤 기록 (HH:MM:SS)", key="goal_time", on_change=_sync_goal_from_time)
+    st.text_input("목표 페이스 (MM:SS)", key="goal_pace", on_change=_sync_goal_from_pace)
+
+    st.markdown("### 마라톤 PB")
+    st.text_input("마라톤 PB (HH:MM:SS)", key="pb_time", on_change=_sync_pb_from_time)
+    st.text_input("마라톤 PB 페이스 (MM:SS)", key="pb_pace", on_change=_sync_pb_from_pace)
+
     generate = st.button("주간 플랜 생성")
 
 
@@ -54,8 +163,8 @@ if generate:
             race_date=race_date,
             recent_weekly_km=float(recent_weekly_km),
             recent_long_km=float(recent_long_km),
-            goal_marathon_time=goal_marathon_time.strip(),
-            current_mp=current_mp.strip(),
+            goal_marathon_time=st.session_state.goal_time.strip(),
+            current_mp=st.session_state.pb_pace.strip(),
         )
         plan = generate_week_plan(config, start_date=start_date)
     except ValueError as err:
