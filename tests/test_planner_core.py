@@ -20,8 +20,6 @@ def build_config(**overrides) -> PlanConfig:
         recent_long_km=24.0,
         goal_marathon_time="03:30:00",
         current_mp="05:10",
-        recent_weekly_altitude=600.0,
-        fatigue_level=3,
     )
     return replace(config, **overrides)
 
@@ -35,12 +33,22 @@ def test_generate_week_plan_returns_full_week() -> None:
     assert plan["summary"]["quality_sessions"] >= 1
 
 
-def test_high_fatigue_removes_quality_sessions() -> None:
-    config = build_config(fatigue_level=8)
+def test_goal_mode_g1_limits_quality_sessions() -> None:
+    config = build_config(goal_marathon_time="03:50:00")
     plan = generate_week_plan(config, start_date=BASE_START)
 
     assert plan["summary"]["quality_sessions"] == 0
-    assert all(not day["session_type"].startswith("Quality") for day in plan["days"])
+
+
+def test_build_phase_g3_adds_two_quality_sessions() -> None:
+    config = build_config(
+        race_date=BASE_START + timedelta(weeks=8),
+        goal_marathon_time="03:20:00",
+        current_mp="05:40",
+    )
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert plan["summary"]["quality_sessions"] >= 2
 
 
 def test_taper_week_focuses_on_recovery() -> None:

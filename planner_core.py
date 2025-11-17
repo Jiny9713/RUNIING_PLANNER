@@ -13,7 +13,7 @@ Goal-mode 기반 · 단계별 강도 자동 조정 · 안전 스위치 내장형
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -32,7 +32,6 @@ class DayPlan:
     pace_range: str
     structure: str
     notes: str
-    safety_overrides: List[str] = field(default_factory=list)
 
     def formatted(self) -> str:
         info = (
@@ -40,12 +39,7 @@ class DayPlan:
             f"{self.distance_km:.1f} km | Pace {self.pace_range} | {self.structure}"
         )
         note = f" | Notes: {self.notes}" if self.notes else ""
-        safe = (
-            f" | Safety: {', '.join(self.safety_overrides)}"
-            if self.safety_overrides
-            else ""
-        )
-        return info + note + safe
+        return info + note
 
 
 @dataclass
@@ -55,8 +49,6 @@ class PlanConfig:
     recent_long_km: float
     goal_marathon_time: str
     current_mp: str
-    recent_weekly_altitude: float
-    fatigue_level: int
 
 
 @dataclass
@@ -67,12 +59,6 @@ class PlanResult:
     total_planned_km: float
     notes: List[str]
     plans: List[DayPlan]
-
-
-@dataclass
-class SafetyContext:
-    fatigue_streak: int = 0
-    prev_day_altitude: float = 0.0
 
 
 WEEKDAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -271,45 +257,6 @@ def build_strides_session(session_date: date, weekday: str, pace: str) -> DayPla
 
 
 # -----------------------------
-# 안전 스위치
-# -----------------------------
-
-
-def estimate_session_altitude(plan: DayPlan, default_gain: float) -> float:
-    if plan.session_type.startswith("Long"):
-        return max(default_gain, 350.0)
-    if plan.session_type.startswith("Quality"):
-        return max(default_gain, 220.0)
-    if plan.session_type.startswith("Easy"):
-        return max(default_gain * 0.5, 120.0)
-    return 60.0
-
-
-def apply_safety_overrides(
-    plan: DayPlan,
-    context: SafetyContext,
-    fatigue_level: int,
-    easy_pace: str,
-) -> DayPlan:
-    overrides: List[str] = []
-    if context.fatigue_streak >= 3:
-        overrides.append("피로 3일 연속 → Easy 전환")
-        distance = 14.0 if plan.session_type.startswith("Long") else max(plan.distance_km, 8.0)
-        plan = build_easy_session(plan.date, plan.weekday, distance, "안전 스위치", easy_pace)
-
-    if context.prev_day_altitude > 300 and plan.session_type.startswith("Quality"):
-        overrides.append("전날 고도 >300m → Easy")
-        plan = build_easy_session(plan.date, plan.weekday, max(plan.distance_km, 8.0), "고도 회복", easy_pace)
-
-    if fatigue_level >= 7 and plan.session_type.startswith("Quality"):
-        overrides.append("피로도 7 이상 → 품질 제한")
-        plan = build_easy_session(plan.date, plan.weekday, max(plan.distance_km, 6.0), "High fatigue", easy_pace)
-
-    plan.safety_overrides.extend(overrides)
-    return plan
-
-
-# -----------------------------
 # Planner
 # -----------------------------
 
@@ -332,14 +279,6 @@ class Planner:
         self.history = build_long_run_history(config.recent_long_km)
         self.stage3_history = sum(1 for d in self.history[-6:] if 26 <= d < 30)
         self.stage4_history = sum(1 for d in self.history[-6:] if d >= 30)
-        self.weekly_altitude_sum = self.estimate_weekly_altitude()
-
-    def estimate_weekly_altitude(self) -> float:
-        if self.config.recent_weekly_altitude > 0:
-            return self.config.recent_weekly_altitude
-        base = self.config.recent_weekly_km * 8.0  # 기본 ~8m/km
-        bonus = sum(max(d - 20.0, 0.0) * 10.0 for d in self.history[-4:])
-        return base + bonus
 
     def adjusted_target_volume(self) -> float:
         base = min(self.config.recent_weekly_km * 1.1, 82.0)
@@ -352,10 +291,6 @@ class Planner:
                 base *= 0.6
             else:
                 base *= 0.4
-        if self.config.fatigue_level >= 7:
-            return base * 0.8
-        if self.config.fatigue_level == 6:
-            return base * 0.9
         return base
 
     def determine_stage(self) -> int:
@@ -376,32 +311,23 @@ class Planner:
 
     def stage_adjustments(self, stage: int, notes: List[str]) -> int:
         stage = min(stage, 4)
-        if stage >= 3 and (self.config.fatigue_level >= 7 or self.config.fatigue_level == 6):
-            notes.append("피로도 제약으로 롱런 Stage ↓")
-            stage = 2
         if stage == 3 and self.stage3_history >= 2:
-            notes.append("Stage3 2회 수행 → 이번 주 Stage2")
+            notes.append("Stage3 2회 이상 → 이번 주는 Stage2")
             stage = 2
         if stage == 4 and self.stage4_history >= 1:
-            notes.append("Stage4 이미 수행 → Stage3 유지")
+            notes.append("Stage4 경험 있음 → Stage3 유지")
             stage = 3
-        if self.weekly_altitude_sum >= 1000 and stage >= 3:
-            notes.append("주간 고도 1000m↑ → Stage2 제한")
-            stage = 2
         if self.phase == "TAPER":
             stage = min(stage, 2)
         return stage
 
     def decide_quality_count(self) -> int:
-        fatigue = self.config.fatigue_level
-        if fatigue >= 7:
-            return 0
         if self.phase == "BASE":
-            return 1 if self.goal_mode != "G1" and fatigue <= 4 else 0
+            return 1 if self.goal_mode != "G1" else 0
         if self.phase == "BUILD":
-            return 1 if fatigue >= 6 else 2
+            return 2 if self.goal_mode == "G3" else 1
         if self.phase == "PEAK":
-            return 2 if fatigue <= 5 else 1
+            return 2
         if self.phase == "TAPER":
             return 1 if self.weeks_left > 1.5 else 0
         return 1
@@ -480,14 +406,10 @@ class Planner:
         long_distance = self.long_run_distance(stage)
 
         quality_count = self.decide_quality_count()
-        if self.weekly_altitude_sum >= 1000:
-            quality_count = min(quality_count, 1)
-            notes.append("고도 부하 ↑ → 품질 1회 제한")
         if self.weeks_left <= 0.5:
             quality_count = 0
 
         schedule = self.schedule_days(quality_count)
-        safety = SafetyContext()
         plans: List[DayPlan] = []
         easy_sessions = sum(1 for v in schedule.values() if v == "Easy")
         remaining_easy_km = max(target_km - long_distance - quality_count * 12.0, 0.0)
@@ -506,18 +428,9 @@ class Planner:
             elif slot == "Strides":
                 plan = build_strides_session(current_date, label, self.paces["easy"])
             else:
-                plan = DayPlan(current_date, label, "Rest / Mobility", 0.0, "-", "Mobility & Stretch", "완전 회복")
+                plan = DayPlan(current_date, label, "Rest / Mobility", 0.0, "-", "Mobility & Stretch", "안전 회복")
 
-            plan = apply_safety_overrides(plan, safety, self.config.fatigue_level, self.paces["easy"])
             plans.append(plan)
-
-            default_gain = max(self.config.recent_weekly_altitude / 7.0, self.config.recent_weekly_km * 0.5)
-            est_alt = estimate_session_altitude(plan, default_gain)
-            safety.prev_day_altitude = est_alt
-            if plan.session_type.startswith("Easy") or plan.session_type.startswith("Rest"):
-                safety.fatigue_streak = 0
-            else:
-                safety.fatigue_streak += 1
 
         plans = self.balance_total_distance(plans, target_km)
         total = sum(p.distance_km for p in plans)
@@ -563,7 +476,6 @@ def generate_week_plan(config: PlanConfig, *, start_date: Optional[date] = None)
             'pace_range': plan.pace_range,
             'structure': plan.structure,
             'notes': plan.notes,
-            'safety_overrides': plan.safety_overrides,
         }
         for plan in result.plans
     ]
