@@ -3,11 +3,10 @@ from typing import Dict, List, Union
 
 import streamlit as st
 
-from planner_core import PlanConfig, generate_week_plan
+from planner_core_v1_1 import PlanConfigV11, generate_week_plan_v1_1
 
 
 def _parse_time(raw: str) -> int:
-    """Convert HH:MM:SS or MM:SS to total seconds."""
     parts = raw.strip().split(":")
     if not parts or not all(part.isdigit() for part in parts):
         raise ValueError("Invalid time format")
@@ -48,69 +47,69 @@ def _pace_to_time(pace_str: str) -> str:
 
 
 def _init_state() -> None:
-    if "goal_time" not in st.session_state:
-        st.session_state.goal_time = "03:30:00"
-    if "goal_pace" not in st.session_state:
-        st.session_state.goal_pace = _time_to_pace(st.session_state.goal_time)
-    if "pb_time" not in st.session_state:
-        st.session_state.pb_time = "03:40:00"
-    if "pb_pace" not in st.session_state:
-        st.session_state.pb_pace = _time_to_pace(st.session_state.pb_time)
-    st.session_state.setdefault("_sync_goal", False)
-    st.session_state.setdefault("_sync_pb", False)
+    if "goal_time_v1_1" not in st.session_state:
+        st.session_state.goal_time_v1_1 = "03:30:00"
+    if "goal_pace_v1_1" not in st.session_state:
+        st.session_state.goal_pace_v1_1 = _time_to_pace(st.session_state.goal_time_v1_1)
+    if "pb_time_v1_1" not in st.session_state:
+        st.session_state.pb_time_v1_1 = "03:40:00"
+    if "pb_pace_v1_1" not in st.session_state:
+        st.session_state.pb_pace_v1_1 = _time_to_pace(st.session_state.pb_time_v1_1)
+    st.session_state.setdefault("_sync_goal_v1_1", False)
+    st.session_state.setdefault("_sync_pb_v1_1", False)
 
 
 def _sync_goal_from_time() -> None:
-    if st.session_state._sync_goal:
+    if st.session_state._sync_goal_v1_1:
         return
     try:
-        pace = _time_to_pace(st.session_state.goal_time)
+        pace = _time_to_pace(st.session_state.goal_time_v1_1)
     except ValueError:
         return
-    st.session_state._sync_goal = True
-    st.session_state.goal_pace = pace
-    st.session_state._sync_goal = False
+    st.session_state._sync_goal_v1_1 = True
+    st.session_state.goal_pace_v1_1 = pace
+    st.session_state._sync_goal_v1_1 = False
 
 
 def _sync_goal_from_pace() -> None:
-    if st.session_state._sync_goal:
+    if st.session_state._sync_goal_v1_1:
         return
     try:
-        time_str = _pace_to_time(st.session_state.goal_pace)
+        time_str = _pace_to_time(st.session_state.goal_pace_v1_1)
     except ValueError:
         return
-    st.session_state._sync_goal = True
-    st.session_state.goal_time = time_str
-    st.session_state._sync_goal = False
+    st.session_state._sync_goal_v1_1 = True
+    st.session_state.goal_time_v1_1 = time_str
+    st.session_state._sync_goal_v1_1 = False
 
 
 def _sync_pb_from_time() -> None:
-    if st.session_state._sync_pb:
+    if st.session_state._sync_pb_v1_1:
         return
     try:
-        pace = _time_to_pace(st.session_state.pb_time)
+        pace = _time_to_pace(st.session_state.pb_time_v1_1)
     except ValueError:
         return
-    st.session_state._sync_pb = True
-    st.session_state.pb_pace = pace
-    st.session_state._sync_pb = False
+    st.session_state._sync_pb_v1_1 = True
+    st.session_state.pb_pace_v1_1 = pace
+    st.session_state._sync_pb_v1_1 = False
 
 
 def _sync_pb_from_pace() -> None:
-    if st.session_state._sync_pb:
+    if st.session_state._sync_pb_v1_1:
         return
     try:
-        time_str = _pace_to_time(st.session_state.pb_pace)
+        time_str = _pace_to_time(st.session_state.pb_pace_v1_1)
     except ValueError:
         return
-    st.session_state._sync_pb = True
-    st.session_state.pb_time = time_str
-    st.session_state._sync_pb = False
+    st.session_state._sync_pb_v1_1 = True
+    st.session_state.pb_time_v1_1 = time_str
+    st.session_state._sync_pb_v1_1 = False
 
 
-st.set_page_config(page_title="마라톤 주간 훈련 플래너", layout="wide")
-st.title("마라톤 주간 훈련 플래너")
-st.caption("planner_v7 로직을 유지한 v1.0")
+st.set_page_config(page_title="마라톤 주간 훈련 플래너 v1.1", layout="wide")
+st.title("마라톤 주간 훈련 플래너 v1.1")
+st.caption("Injury-aware volume heuristic (Coach.md 기반)")
 
 _init_state()
 
@@ -121,13 +120,20 @@ with st.sidebar:
     recent_weekly_km = st.number_input("최근 주간 거리 (km)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
     recent_long_km = st.number_input("최근 롱런 거리 (km)", min_value=10.0, max_value=45.0, value=26.0, step=1.0)
 
+    reduction_reason = st.radio(
+        "지난주 거리 상태",
+        ["정상/감소 없음", "컷백·스케줄·날씨", "부상·질병"],
+        index=0,
+    )
+    injury_flag = reduction_reason == "부상·질병"
+
     st.markdown("### 목표 기록")
-    st.text_input("목표 마라톤 기록 (HH:MM:SS)", key="goal_time", on_change=_sync_goal_from_time)
-    st.text_input("목표 페이스 (MM:SS)", key="goal_pace", on_change=_sync_goal_from_pace)
+    st.text_input("목표 마라톤 기록 (HH:MM:SS)", key="goal_time_v1_1", on_change=_sync_goal_from_time)
+    st.text_input("목표 페이스 (MM:SS)", key="goal_pace_v1_1", on_change=_sync_goal_from_pace)
 
     st.markdown("### 마라톤 PB")
-    st.text_input("마라톤 PB (HH:MM:SS)", key="pb_time", on_change=_sync_pb_from_time)
-    st.text_input("마라톤 PB 페이스 (MM:SS)", key="pb_pace", on_change=_sync_pb_from_pace)
+    st.text_input("마라톤 PB (HH:MM:SS)", key="pb_time_v1_1", on_change=_sync_pb_from_time)
+    st.text_input("마라톤 PB 페이스 (MM:SS)", key="pb_pace_v1_1", on_change=_sync_pb_from_pace)
 
     generate = st.button("주간 플랜 생성")
 
@@ -159,14 +165,15 @@ def render_table(days: List[Dict[str, object]]) -> None:
 
 if generate:
     try:
-        config = PlanConfig(
+        config = PlanConfigV11(
             race_date=race_date,
             recent_weekly_km=float(recent_weekly_km),
             recent_long_km=float(recent_long_km),
-            goal_marathon_time=st.session_state.goal_time.strip(),
-            current_mp=st.session_state.pb_pace.strip(),
+            goal_marathon_time=st.session_state.goal_time_v1_1.strip(),
+            current_mp=st.session_state.pb_pace_v1_1.strip(),
+            injury_flag=injury_flag,
         )
-        plan = generate_week_plan(config, start_date=start_date)
+        plan = generate_week_plan_v1_1(config, start_date=start_date)
     except ValueError as err:
         st.error(f"입력 값을 확인해 주세요: {err}")
     else:
@@ -177,4 +184,4 @@ if generate:
             for note in plan["notes"]:
                 st.write(f"- {note}")
 else:
-    st.info("왼쪽 입력값을 채우고 '주간 플랜 생성' 버튼을 눌러주세요.")
+    st.info("왼쪽 입력값과 지난주 상황을 선택하고 '주간 플랜 생성' 버튼을 눌러주세요.")
