@@ -151,16 +151,21 @@ def render_summary(summary: Dict[str, Union[float, str]]) -> None:
 
 def render_table(days: List[Dict[str, object]]) -> None:
     st.subheader("주간 일정")
-    rows = [
-        {
-            "날짜": f"{day['date']} ({day['weekday']})",
-            "세션": day["session_type"],
-            "거리(km)": f"{day['distance_km']:.1f}",
-            "페이스": day["pace_range"],
-            "메모": day["notes"],
-        }
-        for day in days
-    ]
+    today_iso = date.today().isoformat()
+    rows: List[Dict[str, object]] = []
+    for day in days:
+        label = f"{day['date']} ({day['weekday']})"
+        if day["date"] == today_iso:
+            label += " ⭐ 오늘"
+        rows.append(
+            {
+                "날짜": label,
+                "세션": day["session_type"],
+                "거리(km)": f"{day['distance_km']:.1f}",
+                "페이스": day["pace_range"],
+                "메모": day["notes"],
+            }
+        )
     st.dataframe(rows, use_container_width=True)
 
 

@@ -92,3 +92,47 @@ def test_low_injury_week_increases_from_low_base() -> None:
     min_volume = 0.9 * round(75 * 0.70)
     expected = max(20.0 * 1.2, 0.5 * min_volume)
     assert pytest.approx(plan["summary"]["target_weekly_km"], rel=1e-2) == expected
+
+
+def test_weekly_volume_jump_adds_warning_note() -> None:
+    config = build_config(recent_weekly_km=20.0, injury_flag=False)
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert any("25% 이상 증가" in note for note in plan["notes"])
+
+
+def test_phase_focus_note_added_for_base_week() -> None:
+    config = build_config()
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert any(note.startswith("BASE Phase") for note in plan["notes"])
+
+
+def test_quality_zero_note_present_when_no_sessions() -> None:
+    config = build_config(goal_marathon_time="03:50:00")
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert any("품질 세션 없이 회복 중심" in note for note in plan["notes"])
+
+
+def test_quality_two_sessions_note_present() -> None:
+    config = build_config(
+        race_date=BASE_START + timedelta(weeks=8),
+        goal_marathon_time="03:20:00",
+        current_mp="05:40",
+    )
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert any("품질 세션이 2회 이상" in note for note in plan["notes"])
+
+
+def test_long_run_stage_three_note_present() -> None:
+    config = build_config(
+        race_date=BASE_START + timedelta(weeks=8),
+        goal_marathon_time="03:20:00",
+        current_mp="05:40",
+        recent_long_km=24.0,
+    )
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    assert any("Stage3 단계" in note for note in plan["notes"])

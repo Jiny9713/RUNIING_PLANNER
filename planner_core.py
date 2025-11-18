@@ -492,6 +492,29 @@ def generate_week_plan(config: PlanConfig, *, start_date: Optional[date] = None)
         'long_run_distance': long_distance,
         'long_run_stage': long_stage,
     }
+    notes = list(result.notes)
+    recent_km = config.recent_weekly_km
+    planned_km = result.total_planned_km
+    if recent_km > 0:
+        ratio = planned_km / recent_km
+        if ratio >= 1.25:
+            # 지난 주 대비 과도한 주간 거리 증가 시 경고 메모를 추가한다.
+            notes.append("지난 주 대비 주간 거리가 25% 이상 증가했습니다. 피로도·통증을 점검하고 필요 시 거리를 줄여 주세요.")
+    phase_focus = {
+        'BASE': "BASE Phase: 에어로빅 베이스와 Easy 러닝 비율을 충분히 확보하는 주입니다. 페이스보다는 거리와 주간 리듬에 집중해 주세요.",
+        'BUILD': "BUILD Phase: 품질 세션 후 회복일을 충분히 확보하면서, 롱런 후반 집중도를 점차 올리는 주입니다.",
+        'PEAK': "PEAK Phase: 레이스 페이스 감각을 키우는 것이 핵심입니다. 롱런과 포인트 훈련에서 식이·보급·페이스 전략을 리허설해 보세요.",
+        'TAPER': "TAPER Phase: 볼륨을 줄이고 회복을 극대화하는 구간입니다. 수면·영양·스트레스 관리를 우선시해 주세요.",
+    }
+    phase_note = phase_focus.get(result.phase)
+    if phase_note:
+        notes.append(phase_note)
+    if quality_sessions == 0:
+        notes.append("이번 주는 품질 세션 없이 회복 중심 주간입니다. Easy 페이스에서 부상 신호를 체크해 주세요.")
+    elif quality_sessions >= 2:
+        notes.append("품질 세션이 2회 이상인 주간입니다. 세션 사이 회복일의 수면·영양 관리에 특히 신경 써 주세요.")
+    if long_stage in {'3', '4'} and long_distance >= 28.0:
+        notes.append(f"이번 롱런은 Stage{long_stage} 단계로, 레이스 시뮬레이션에 가까운 강도입니다. 보급 계획과 페이스 전략을 미리 연습해 보세요.")
     days = [
         {
             'date': plan.date.isoformat(),
@@ -504,4 +527,4 @@ def generate_week_plan(config: PlanConfig, *, start_date: Optional[date] = None)
         }
         for plan in result.plans
     ]
-    return {'summary': summary, 'days': days, 'notes': result.notes}
+    return {'summary': summary, 'days': days, 'notes': notes}
