@@ -1,6 +1,8 @@
+from collections import Counter
 from datetime import date
 from typing import Any, Dict, List, Optional
 
+import pandas as pd
 import streamlit as st
 
 from planner_core_v1_2 import (
@@ -141,39 +143,84 @@ def render_table(days: List[Dict[str, object]]) -> None:
     st.dataframe(rows, use_container_width=True)
 
 
-def render_weeks_table(weeks: List[Dict[str, Any]]) -> None:
+def render_multi_week_banner(weeks: List[Dict[str, Any]], race_date: date) -> Optional[int]:
+    if not weeks:
+        return None
+    total_weeks = len(weeks)
+    counts = Counter(week["summary"]["phase"] for week in weeks)
+    phase_order = ["BASE", "BUILD", "PEAK", "TAPER"]
+    parts = [f"{name} {counts.get(name, 0)}주" for name in phase_order if counts.get(name, 0)]
+    phase_text = " · ".join(parts) if parts else "단계 정보 없음"
+    today = date.today()
+    current_idx: Optional[int] = None
+    for week in weeks:
+        if week["start_date"] <= today <= week["end_date"]:
+            current_idx = week["index"]
+            break
+    if current_idx is not None:
+        st.markdown(
+            f"총 {total_weeks}주 플랜 중 {current_idx + 1}주차 진행 중입니다.\n\n{phase_text} 구성을 따릅니다."
+        )
+    else:
+        st.markdown(f"총 {total_weeks}주 플랜입니다.\n\n{phase_text} 구성을 따릅니다.")
+    return current_idx
+
+
+def render_km_chart(weeks: List[Dict[str, Any]]) -> None:
+    if not weeks:
+        return
+    chart_rows = [
+        {
+            "주차": week["index"] + 1,
+            "계획 km": week["summary"]["planned_weekly_km"],
+            "실제 km": week["actual_weekly_km"],
+        }
+        for week in weeks
+    ]
+    chart_df = pd.DataFrame(chart_rows).set_index("주차")
+    st.line_chart(chart_df, height=280, use_container_width=True)
+
+
+def render_weeks_table(
+    weeks: List[Dict[str, Any]],
+    *,
+    current_week_index: Optional[int],
+    race_date: date,
+) -> None:
     rows: List[Dict[str, object]] = []
+    previous_planned: Optional[float] = None
     for week in weeks:
         summary = week["summary"]
+        planned = summary["planned_weekly_km"]
+        actual = week["actual_weekly_km"]
+        tag = ""
+        if week["start_date"] <= race_date <= week["end_date"]:
+            tag = "RACE WEEK"
+        elif summary["phase"] == "TAPER":
+            tag = "TAPER"
+        elif previous_planned is not None and planned < previous_planned * 0.85:
+            tag = "CUTBACK"
+        elif previous_planned is not None and planned >= previous_planned * 1.25:
+            tag = "VOL↑ 25%"
+        if current_week_index == week["index"]:
+            tag = (tag + " ⭐ 현재 주").strip()
+        week_label = f"{week['index'] + 1}주차"
         rows.append(
             {
-                "주차": week["index"] + 1,
+                "주차": week_label,
                 "시작일": week["start_date"].isoformat(),
                 "Phase": summary["phase"],
                 "목표 km": f"{summary['target_weekly_km']:.1f}",
-                "계획 km": f"{summary['planned_weekly_km']:.1f}",
+                "계획 km": f"{planned:.1f}",
                 "롱런": f"{summary['long_run_distance']:.1f}",
                 "품질 세션": summary["quality_sessions"],
                 "사용한 지난주 km": f"{week['recent_weekly_km_used']:.1f}",
-                "실제 주간 km": "" if week["actual_weekly_km"] is None else f"{week['actual_weekly_km']:.1f}",
+                "실제 주간 km": "" if actual is None else f"{actual:.1f}",
+                "비고": tag,
             }
         )
+        previous_planned = planned
     st.dataframe(rows, use_container_width=True)
-
-
-def parse_actual_weekly_input(raw: str) -> Optional[List[float]]:
-    if not raw.strip():
-        return None
-    values: List[float] = []
-    for token in raw.split(","):
-        token = token.strip()
-        if not token:
-            continue
-        try:
-            values.append(float(token))
-        except ValueError as exc:
-            raise ValueError(f"유효하지 않은 값: {token}") from exc
-    return values or None
 
 
 st.set_page_config(page_title="마라톤 주간 플래너 v1.2", layout="wide")
@@ -205,9 +252,37 @@ with st.sidebar:
     st.text_input("마라톤 PB (HH:MM:SS)", key="pb_time_v1_2", on_change=_sync_pb_from_time)
     st.text_input("마라톤 PB 페이스 (MM:SS)", key="pb_pace_v1_2", on_change=_sync_pb_from_pace)
 
-    actual_input = ""
+    completed_weeks = 0
+    actual_weekly_entries: Optional[List[float]] = None
+    ongoing_label = "진행 중 사이클 재조정 (실제 수행 반영)"
+    new_cycle_label = "새 사이클 설계 (처음 플랜 생성)"
+    multi_cycle_mode = new_cycle_label
     if mode == "멀티 주간 플랜 (v1.2)":
-        actual_input = st.text_input("이미 완료한 주의 실제 km (예: 40, 42, 38)", value="")
+        multi_cycle_mode = st.radio(
+            "멀티 주간 진행 옵션",
+            (new_cycle_label, ongoing_label),
+            index=0,
+        )
+        if multi_cycle_mode == ongoing_label:
+            completed_weeks = st.slider(
+                "이미 완료한 주차 수",
+                min_value=0,
+                max_value=24,
+                value=0,
+                step=1,
+            )
+            actual_weekly_entries = []
+            for idx in range(completed_weeks):
+                km = st.number_input(
+                    f"{idx + 1}주차 실제 주간 거리 (km)",
+                    min_value=0.0,
+                    max_value=300.0,
+                    step=1.0,
+                    key=f"actual_week_input_{idx + 1}",
+                )
+                actual_weekly_entries.append(float(km))
+        else:
+            actual_weekly_entries = None
 
 config = PlanConfig(
     race_date=race_date,
@@ -238,11 +313,6 @@ if mode == "1주 플랜 (v1.2)":
 else:
     generate_multi = st.button("멀티 주간 플랜 생성")
     if generate_multi:
-        try:
-            actual_values = parse_actual_weekly_input(actual_input)
-        except ValueError as err:
-            st.error(f"실제 주간 거리 입력을 확인해 주세요: {err}")
-            actual_values = None
         if race_date < start_date:
             st.error("레이스 날짜는 플랜 시작일 이후여야 합니다.")
         else:
@@ -250,14 +320,22 @@ else:
                 config,
                 start_date=start_date,
                 race_date=race_date,
-                actual_weekly_km=actual_values,
+                actual_weekly_km=actual_weekly_entries,
             )
             weeks = plan["weeks"]
             if not weeks:
                 st.warning("생성된 주차가 없습니다. 입력 값을 확인해 주세요.")
             else:
+                st.subheader("사이클 개요")
+                current_week_index = render_multi_week_banner(weeks, race_date)
+                st.subheader("주간 계획 vs 실제 거리")
+                render_km_chart(weeks)
                 st.subheader("주차별 요약")
-                render_weeks_table(weeks)
+                render_weeks_table(
+                    weeks,
+                    current_week_index=current_week_index,
+                    race_date=race_date,
+                )
                 options = [f"{week['index'] + 1}주차 ({week['start_date'].isoformat()})" for week in weeks]
                 selected_label = st.selectbox("상세 확인 주차", options)
                 selected_index = options.index(selected_label)
@@ -275,4 +353,4 @@ else:
                     for note in selected_week["notes"]:
                         st.write(f"- {note}")
     else:
-        st.info("실제 주간 거리 입력이 있다면 쉼표로 구분해 입력한 뒤 '멀티 주간 플랜 생성'을 눌러 주세요.")
+        st.info("완료한 주차가 있다면 위 슬라이더와 입력란을 채우고 '멀티 주간 플랜 생성' 버튼을 눌러 주세요.")
