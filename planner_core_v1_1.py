@@ -10,18 +10,15 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Dict, Optional
 
-from planner_core import (
-    PlanConfig,
-    Planner,
-)
+from planner_core_v1_0 import PlanConfig as PlanConfigV10, Planner as PlannerV10
 
 
 @dataclass
-class PlanConfigV11(PlanConfig):
+class PlanConfigV11(PlanConfigV10):
     injury_flag: bool = False
 
 
-class PlannerV11(Planner):
+class PlannerV11(PlannerV10):
     def __init__(self, config: PlanConfigV11, *, start_date: Optional[date] = None):
         super().__init__(config, start_date=start_date)
 

@@ -1,9 +1,16 @@
+"""
+app_streamlit_v1_0
+------------------
+Copied from app_streamlit.py before injury-aware promotion.
+Uses the original planner_core.py inputs without injury flag.
+"""
+
 from datetime import date
 from typing import Dict, List, Union
 
 import streamlit as st
 
-from planner_core import PlanConfig, generate_week_plan
+from planner_core_v1_0 import PlanConfig, generate_week_plan
 
 
 def _parse_time(raw: str) -> int:
@@ -110,7 +117,7 @@ def _sync_pb_from_pace() -> None:
 
 st.set_page_config(page_title="마라톤 주간 훈련 플래너", layout="wide")
 st.title("마라톤 주간 훈련 플래너")
-st.caption("Injury-aware volume heuristic (default)")
+st.caption("planner_v7 로직을 유지한 v1.0")
 
 _init_state()
 
@@ -120,13 +127,6 @@ with st.sidebar:
     start_date = st.date_input("플랜 시작일", value=date.today())
     recent_weekly_km = st.number_input("최근 주간 거리 (km)", min_value=10.0, max_value=200.0, value=60.0, step=1.0)
     recent_long_km = st.number_input("최근 롱런 거리 (km)", min_value=10.0, max_value=45.0, value=26.0, step=1.0)
-
-    reduction_reason = st.radio(
-        "지난주 거리 상태",
-        ["정상/감소 없음", "컷백·스케줄·날씨", "부상·질병"],
-        index=0,
-    )
-    injury_flag = reduction_reason == "부상·질병"
 
     st.markdown("### 목표 기록")
     st.text_input("목표 마라톤 기록 (HH:MM:SS)", key="goal_time", on_change=_sync_goal_from_time)
@@ -172,7 +172,6 @@ if generate:
             recent_long_km=float(recent_long_km),
             goal_marathon_time=st.session_state.goal_time.strip(),
             current_mp=st.session_state.pb_pace.strip(),
-            injury_flag=injury_flag,
         )
         plan = generate_week_plan(config, start_date=start_date)
     except ValueError as err:

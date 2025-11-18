@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 """
+planner_core_v1_0
+-----------------
+Copied from planner_core.py before the injury-aware volume promotion.
+Maintains the original planner_v7 behaviour without injury heuristics.
+
 planner_v7
 -----------
 Goal-mode 기반 · 단계별 강도 자동 조정 · 안전 스위치 내장형 러닝 플래너 (Coach.md v4 반영)
@@ -8,7 +13,6 @@ Goal-mode 기반 · 단계별 강도 자동 조정 · 안전 스위치 내장형
 - 오늘/레이스 날짜로 Phase 자동 판정
 - Goal Mode(G1/G2/G3) 및 MP 기반 페이스 산출
 - 롱런 Stage 제한 및 안전 스위치(피로 연속, 고도 추정) 적용
-- 부상 여부 기반 주간 볼륨 휴리스틱
 - Race week strides/short jog 패턴 포함
 """
 
@@ -50,7 +54,6 @@ class PlanConfig:
     recent_long_km: float
     goal_marathon_time: str
     current_mp: str
-    injury_flag: bool = False
 
 
 @dataclass
@@ -283,40 +286,17 @@ class Planner:
         self.stage4_history = sum(1 for d in self.history[-6:] if d >= 30)
 
     def adjusted_target_volume(self) -> float:
-        # 부상 여부와 최근 주간 거리 추세를 함께 고려해 목표 볼륨을 산출한다.
+        base = min(self.config.recent_weekly_km * 1.1, 82.0)
         caps = {"G1": 60.0, "G2": 75.0, "G3": 82.0}
-        phase_factor = {"BASE": 0.70, "BUILD": 0.85, "PEAK": 0.95, "TAPER": 0.60}
-
-        cap = caps[self.goal_mode]
-        theoretical = round(cap * phase_factor[self.phase])
-        min_volume = 0.9 * theoretical
-        max_volume = cap
-        recent = self.config.recent_weekly_km
-        injury = getattr(self.config, "injury_flag", False)
-
-        if recent >= min_volume:
-            target = min(max(recent, min_volume), max_volume)
-        elif recent >= 0.6 * min_volume:
-            if injury:
-                candidate = max(recent * 1.1, 0.8 * min_volume)
-                target = min(candidate, max_volume)
-            else:
-                target = min(min_volume, max_volume)
-        else:
-            if injury:
-                candidate = max(recent * 1.2, 0.5 * min_volume)
-            else:
-                candidate = max(recent * 1.3, 0.6 * min_volume)
-            target = min(candidate, max_volume)
-
+        base = min(base, caps[self.goal_mode])
         if self.phase == "TAPER":
             if self.weeks_left > 1.5:
-                target *= 0.8
+                base *= 0.8
             elif self.weeks_left > 0.5:
-                target *= 0.6
+                base *= 0.6
             else:
-                target *= 0.4
-        return max(target, 0.0)
+                base *= 0.4
+        return base
 
     def determine_stage(self) -> int:
         lr = self.config.recent_long_km

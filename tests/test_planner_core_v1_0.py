@@ -1,15 +1,18 @@
+"""
+Tests for planner_core_v1_0 (pre injury-aware default).
+Copied from tests/test_planner_core.py during promotion.
+"""
+
 from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 import sys
 
-import pytest
-
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from planner_core import PlanConfig, generate_week_plan
+from planner_core_v1_0 import PlanConfig, generate_week_plan
 
 
 BASE_START = date(2025, 1, 6)
@@ -59,36 +62,3 @@ def test_taper_week_focuses_on_recovery() -> None:
 
     assert plan["summary"]["quality_sessions"] == 0
     assert plan["summary"]["long_run_distance"] <= 4.1
-
-
-def test_recent_volume_above_min_keeps_current_level() -> None:
-    config = build_config(recent_weekly_km=60.0)
-    plan = generate_week_plan(config, start_date=BASE_START)
-
-    assert pytest.approx(plan["summary"]["target_weekly_km"], rel=1e-2) == 60.0
-
-
-def test_cutback_week_recovers_to_minimum() -> None:
-    config = build_config(recent_weekly_km=40.0, injury_flag=False)
-    plan = generate_week_plan(config, start_date=BASE_START)
-
-    min_volume = 0.9 * round(75 * 0.70)
-    assert pytest.approx(plan["summary"]["target_weekly_km"], rel=1e-2) == min_volume
-
-
-def test_injury_week_rises_cautiously() -> None:
-    config = build_config(recent_weekly_km=40.0, injury_flag=True)
-    plan = generate_week_plan(config, start_date=BASE_START)
-
-    min_volume = 0.9 * round(75 * 0.70)
-    expected = max(40.0 * 1.1, 0.8 * min_volume)
-    assert pytest.approx(plan["summary"]["target_weekly_km"], rel=1e-2) == expected
-
-
-def test_low_injury_week_increases_from_low_base() -> None:
-    config = build_config(recent_weekly_km=20.0, injury_flag=True)
-    plan = generate_week_plan(config, start_date=BASE_START)
-
-    min_volume = 0.9 * round(75 * 0.70)
-    expected = max(20.0 * 1.2, 0.5 * min_volume)
-    assert pytest.approx(plan["summary"]["target_weekly_km"], rel=1e-2) == expected

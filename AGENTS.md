@@ -1,121 +1,171 @@
-
 # Agent instructions for this repo
 
 ## Overview
 
 This repository contains a marathon training planner with:
-- A core planning engine in `planner_core.py`
-- A Streamlit web UI in `app_streamlit.py`
-- Scenario-based tests in `tests/test_planner_core.py`
+
+- A core planning engine in `planner_core.py` (current default)
+- A Streamlit web UI in `app_streamlit.py` (current default UI)
+- Scenario-based tests in `tests/`
 - A coaching philosophy document in `Coach.md`
 
 The goal is to maintain and extend this system as a **stable, deployable web app** while keeping the training philosophy coherent and versioned.
 
 ---
 
-## Stable vs Experimental surfaces
+## Versioning model: “default = latest, suffix = archived”
 
-### Stable entry points (v1.0)
+### Current default (no suffix)
 
-The following files define the current **stable v1.0 surface** and must remain usable:
+- The files **without any version suffix** are always considered the **latest accepted default**:
 
-- `planner_core.py`
-  - Defines `PlanConfig` and `generate_week_plan`
-- `app_streamlit.py`
-  - Streamlit UI using the v1.0 engine
-- `tests/test_planner_core.py`
-  - Scenario tests for the v1.0 engine
-- `Coach.md`
-  - Training philosophy document
-- `README.md`
-  - Basic usage and project overview
-- `requirements.txt`
-  - Minimal dependencies
+  - `planner_core.py`  → latest engine
+  - `app_streamlit.py` → latest UI entry point (used by Streamlit Cloud)
+  - `tests/test_planner_core.py` (and related default tests)
+  - `Coach.md`
+  - `README.md`
+  - `requirements.txt`
 
-**Default rule:** do **not** introduce breaking changes to these files unless the user explicitly requests an in-place change.
+- These files should always be runnable with:
 
-### Experimental / new versions
+  ```bash
+  pip install -r requirements.txt
+  streamlit run app_streamlit.py
+  pytest
+````
 
-When adding new features, alternative engines, or UI variants:
+### Versioned snapshots (archived or experimental)
 
-- Do **not** rewrite or delete the existing stable files.
-- Create new versioned or experimental files, for example:
-  - `planner_core_v1_1.py`
-  - `app_streamlit_v1_1.py`
-  - `tests/test_planner_core_v1_1.py`
-- Or use a dedicated folder:
-  - `experiments/engine_v1_1.py`
-  - `v1_1/app_streamlit_v1_1.py`
+* Older or experimental versions are kept as **versioned copies** with suffixes:
 
-At the top of each new file, include a short comment indicating:
-- What it is based on (e.g. “based on `planner_core.py` v1.0”)
-- What changed (e.g. “adds HR-based safety switches”, “supports multi-week planning”, etc.)
+  * `planner_core_v1_0.py`
+  * `planner_core_v1_1.py`
+  * `app_streamlit_v1_0.py`
+  * `app_streamlit_v1_1.py`
+  * `tests/test_planner_core_v1_1.py`
+  * Or under folders like `legacy_versions/`, `experiments/`, `v1_1/`, etc.
+
+* These snapshots must **not** be deleted or heavily rewritten unless explicitly requested.
+
+* At the top of each versioned file, include a short comment describing:
+
+  * What it is based on (e.g. “based on `planner_core.py` as of v1.0”)
+  * What changed (e.g. “adds injury-aware weekly volume heuristic”)
+
+---
+
+## Promotion flow: making a new version the default
+
+When a new engine/UI variant has been validated and the user explicitly asks to “make this the default”:
+
+1. **Archive the current default**
+
+   * If `planner_core_v1_0.py` does not exist yet:
+
+     * Copy (or rename) the current `planner_core.py` to `planner_core_v1_0.py`.
+   * If `app_streamlit_v1_0.py` does not exist yet:
+
+     * Copy (or rename) the current `app_streamlit.py` to `app_streamlit_v1_0.py`.
+   * If needed, archive current default tests as:
+
+     * `tests/test_planner_core_v1_0.py`.
+
+2. **Promote the new version**
+
+   * If the new engine is in `planner_core_v1_1.py` (for example):
+
+     * Copy (or rename) it to `planner_core.py` so that the default engine uses the new logic.
+   * If the new UI is in `app_streamlit_v1_1.py`:
+
+     * Copy (or rename) it to `app_streamlit.py` so that `streamlit run app_streamlit.py` uses the new UI.
+   * Update or create tests so that:
+
+     * `tests/test_planner_core.py` targets the new default behaviour.
+     * Versioned tests (e.g. `test_planner_core_v1_0.py`, `test_planner_core_v1_1.py`) remain as historical references if needed.
+
+3. **Update documentation**
+
+   * Update `README.md` to reflect:
+
+     * Which version is now the default.
+     * How to run any archived versions (if they should still be usable).
+   * If relevant, note the promotion in a changelog or “Release notes” section.
+
+4. **Do not break archived versions**
+
+   * Avoid editing the historical files (`*_v1_0.py`, `*_v1_1.py`) in ways that change their original behaviour.
+   * If a bug is found in a historical version, either:
+
+     * Document it as a known issue, or
+     * Add a separate `*_v1_0_fix.py` variant, instead of silently changing the original.
 
 ---
 
 ## Training philosophy & scope
 
-- `Coach.md` is the primary source of truth for:
-  - Phases (BASE / BUILD / PEAK / TAPER)
-  - Goal Mode (G1 / G2 / G3)
-  - Volume strategy, long run stages, and quality session patterns
-  - Pace model (Easy / Long / MP / Tempo / Interval)
+* `Coach.md` is the primary source of truth for:
 
-- **Safety switches** (fatigue, elevation, pain, HR, etc.):
-  - Are documented in `Coach.md` as a **manual checklist for runners**.
-  - Are **not implemented** in the current code.
-  - The online planner proposes a **baseline structure only**.
-  - Runners are expected to manually adjust using the safety-switch guidance in `Coach.md`.
+  * Phases (BASE / BUILD / PEAK / TAPER)
+  * Goal Mode (G1 / G2 / G3)
+  * Volume strategy, long run stages, and quality session patterns
+  * Pace model (Easy / Long / MP / Tempo / Interval)
 
-Do **not** reintroduce automatic safety logic (fatigue/elevation/HR/pain) into the engine or UI unless explicitly instructed.
+* **Safety switches** (fatigue, elevation, pain, HR, etc.):
+
+  * Are documented in `Coach.md` as a **manual checklist for runners**.
+  * Are **not implemented** as automatic logic in the default engine.
+  * The online planner proposes a **baseline structure only**.
+  * Runners are expected to manually adjust using the safety-switch guidance in `Coach.md`.
+
+Do **not** introduce automatic fatigue/elevation/HR/pain safety logic into the default engine or UI unless explicitly instructed.
 
 ---
 
-## Core interfaces (do not break by default)
+## Core interfaces (default engine & UI)
 
-### Engine: `planner_core.py`
+### Engine: `planner_core.py` (default)
 
-The v1.0 engine exposes the following interface:
+The default engine exposes a `PlanConfig`-style dataclass and a `generate_week_plan`-style function (names may evolve, but the shape should stay consistent unless the user approves a breaking change).
 
-- `@dataclass PlanConfig` with fields:
+Typical example:
 
-  ```python
-  @dataclass
-  class PlanConfig:
-      race_date: date
-      recent_weekly_km: float
-      recent_long_km: float
-      goal_marathon_time: str  # "03:30:00"
-      current_mp: str          # "05:10" (minutes:seconds per km)
-````
+```python
+@dataclass
+class PlanConfig:
+    race_date: date
+    recent_weekly_km: float
+    recent_long_km: float
+    goal_marathon_time: str  # "03:30:00"
+    current_mp: str          # "05:10" (minutes:seconds per km)
+    # Optional: flags such as injury/illness, etc., depending on current default version.
+```
 
-* `generate_week_plan`:
+```python
+def generate_week_plan(
+    config: PlanConfig,
+    *,
+    start_date: Optional[date] = None,
+) -> Dict[str, Any]:
+    """
+    Returns:
+        {
+            "summary": {...},  # weekly metrics
+            "days": [...],     # list of day-level sessions
+            "notes": [...],    # list of coach notes
+        }
+    """
+```
 
-  ```python
-  def generate_week_plan(
-      config: PlanConfig,
-      *,
-      start_date: Optional[date] = None,
-  ) -> Dict[str, Any]:
-      """
-      Returns:
-          {
-              "summary": {...},  # weekly metrics
-              "days": [...],     # list of day-level sessions
-              "notes": [...],    # list of coach notes
-          }
-      """
-  ```
+Responsibilities:
 
-The engine is responsible for:
+* Determine Phase (BASE / BUILD / PEAK / TAPER) from `start_date` and `race_date`.
+* Compute Goal Mode (G1 / G2 / G3) from `goal_marathon_time` and `current_mp`.
+* Generate a weekly plan (volume, long run stage/distance, number and type of quality sessions, easy runs) consistent with `Coach.md`.
+* Apply any currently accepted heuristics (e.g. injury-aware volume) for the **default** behaviour.
 
-* Determining Phase (BASE / BUILD / PEAK / TAPER) from `start_date` and `race_date`.
-* Computing Goal Mode (G1 / G2 / G3) from `goal_marathon_time` and `current_mp`.
-* Generating a weekly plan (total volume, long run stage/distance, number and type of quality sessions, easy runs) that is consistent with `Coach.md`.
+### UI: `app_streamlit.py` (default)
 
-### UI: `app_streamlit.py`
-
-* Uses the v1.0 `PlanConfig` fields as sidebar inputs:
+* Uses the default engine’s config fields as sidebar inputs:
 
   * Race date
   * Plan start date
@@ -123,7 +173,9 @@ The engine is responsible for:
   * Recent long run km
   * Goal marathon time (HH:MM:SS)
   * Current MP (MM:SS per km)
-* Calls `generate_week_plan` and renders:
+  * Additional flags (e.g. last week’s reduction reason / injury flag) if they are part of the current default.
+
+* Calls the default `generate_week_plan` and renders:
 
   * Weekly summary metrics:
 
@@ -132,13 +184,16 @@ The engine is responsible for:
   * A day-by-day table:
 
     * Date, weekday, session type, distance, pace range, notes
-  * Optional coach notes section
+  * Optional coach notes section.
 
-When extending the UI, keep this basic flow intact for v1.0. New flows should live in new files (e.g. `app_streamlit_v1_1.py`).
+When adding new UIs:
+
+* Use versioned filenames (`app_streamlit_vX_Y.py`) until promotion.
+* Do not break `app_streamlit.py` unless performing an explicit promotion.
 
 ---
 
-## Change policy (non-destructive updates)
+## Change policy (non-destructive by default)
 
 Unless explicitly requested:
 
@@ -149,25 +204,14 @@ Unless explicitly requested:
   * `tests/test_planner_core.py`
   * `Coach.md`
   * `README.md`
-* Prefer **additive, versioned** changes:
 
-  * New engines in new modules (e.g. `planner_core_v1_1.py`)
-  * New UIs in new modules (e.g. `app_streamlit_v1_1.py`)
-  * New tests in new test files.
+* For new engine experiments, create **new, versioned files**:
 
-When adding a new engine variant:
+  * `planner_core_v1_2.py`, `planner_core_experiment.py`, etc.
+  * Matching UI files if needed, e.g. `app_streamlit_v1_2.py`.
+  * Matching tests, e.g. `tests/test_planner_core_v1_2.py`.
 
-* Keep the original `PlanConfig` unchanged.
-* If additional configuration is needed, use a **new** config dataclass
-  in the new module, rather than extending the existing one.
-
-The stable v1.0 entry points must remain runnable with:
-
-```bash
-pip install -r requirements.txt
-streamlit run app_streamlit.py
-pytest
-```
+* Only after the user approves, follow the **promotion flow** to move the new version into the default filenames.
 
 ---
 
@@ -175,7 +219,7 @@ pytest
 
 * Any change to core planning logic or new engine variants should be accompanied by **scenario-based tests**.
 
-* Always ensure that:
+* Always ensure:
 
   ```bash
   pytest
@@ -185,10 +229,11 @@ pytest
 
 * For new versions/experiments:
 
-  * Add new tests rather than modifying existing v1.0 tests, where possible.
-  * Example:
+  * Add new tests rather than modifying existing default tests, where possible.
+  * Examples:
 
-    * `tests/test_planner_core_v1_1.py` for a new `planner_core_v1_1.py`.
+    * `tests/test_planner_core_v1_1.py` for a new injury-aware volume heuristic.
+    * `tests/test_planner_core_v1_2.py` for a multi-week planner, etc.
 
 * Tests should at least validate:
 
@@ -196,6 +241,7 @@ pytest
   * Phase / Goal Mode decisions are reasonable.
   * Long run distance and stage follow the intended rules.
   * Taper week / race week patterns remain safe and coherent.
+  * For injury-aware logic: volume progression behaves as specified across different R/MIN/injury_flag combinations.
 
 ---
 
@@ -203,15 +249,16 @@ pytest
 
 ### Comments in code
 
-* For **core algorithms and planning heuristics** (e.g. phase logic, long-run stage selection, quality session patterns):
+* For **core algorithms and planning heuristics** (phase logic, long-run stage selection, quality session patterns, volume heuristics):
 
   * Add **Korean comments** explaining the intent and high-level behaviour.
-  * Keep comments concise but meaningful.
-  * Example:
+  * Keep them concise but meaningful.
 
-    ```python
-    # 이 함수는 대회까지 남은 주차를 기준으로 BASE/BUILD/PEAK/TAPER를 결정한다.
-    ```
+  Example:
+
+  ```python
+  # 이 함수는 지난 주 거리와 부상 여부를 기반으로 이번 주 목표 주간 거리를 결정한다.
+  ```
 
 * For docstrings and smaller utility functions:
 
@@ -225,13 +272,13 @@ pytest
   * Update `README.md` (or add a new section) to describe:
 
     * What the new entry point is.
-    * How to run it.
+    * How to run it (e.g. `streamlit run app_streamlit_v1_1.py`).
   * Include **at least one example of input and output**:
 
-    * Example configuration (e.g. race date, goal time, recent weekly km).
-    * Example snippet of the generated weekly plan (or a screenshot/link if appropriate).
+    * Example configuration (race date, goal time, recent weekly km).
+    * Example of the generated weekly plan (summary and one or two days).
 
-This ensures that both humans and agents can quickly understand and verify new behaviour.
+This keeps both humans and agents able to quickly understand and verify new behaviour.
 
 ---
 
@@ -251,19 +298,19 @@ When the training philosophy itself needs to change (e.g. different peak strateg
 
 2. **Update or create engine variants based on the new philosophy.**
 
-   * Do **not** immediately rewrite the v1.0 engine.
-   * Instead, create a new engine module (e.g. `planner_core_v1_1.py`) implementing the updated rules.
+   * Do **not** immediately rewrite the default engine.
+   * Instead, create a new engine module (e.g. `planner_core_v1_2.py`) implementing the updated rules.
    * Add tests that reflect the new philosophy.
 
-3. **Keep `Coach.md` as the canonical “current default” only when you deliberately decide to migrate.**
+3. **Promote the new philosophy only when ready.**
 
-   * Once a new philosophy version is stable and accepted, you may:
+   * Once the new philosophy + engine/UI are stable and accepted:
 
-     * Copy `Coach_v1.1.md` back to `Coach.md`, or
-     * Make `Coach.md` a short index pointing to the active version.
-   * Any migration from v1.0 to v1.1 should be explicit and documented in `README.md`.
+     * Option A: Copy `Coach_v1.1.md` back to `Coach.md` and follow the promotion flow to make the new engine/UI the defaults.
+     * Option B: Make `Coach.md` a short index that points to the active version.
+   * Document any migration in `README.md` or a changelog.
 
-This process keeps a clear history of philosophy changes and prevents accidental drift between documentation and implementation.
+This keeps a clear history of philosophy changes and prevents accidental drift between documentation and implementation.
 
 ---
 
@@ -290,26 +337,27 @@ You may be asked to:
 
 1. **Extend the engine**
 
-   * Implement alternative heuristics in a new module (e.g. `planner_core_v1_1.py`).
-   * Add optional configuration fields in a new config dataclass (in the new module), while keeping the existing `PlanConfig` intact.
+   * Implement alternative heuristics (e.g. injury-aware volume, multi-week plans) in new versioned modules.
+   * Once validated, follow the promotion flow to make them the default.
 
 2. **Improve or fork the UI**
 
-   * Add new views, charts, or export options in a new Streamlit app file (e.g. `app_streamlit_v1_1.py`).
-   * Keep `app_streamlit.py` working with the original flow.
+   * Add new views, charts, or export options in new Streamlit files.
+   * Promote them to `app_streamlit.py` when approved.
 
 3. **Enhance testing**
 
    * Add new scenario tests for new variants.
-   * Ensure `pytest` passes across both stable and experimental modules.
+   * Keep `pytest` passing for both the default engine and any important historical versions.
 
 4. **Refine documentation**
 
    * Update `README.md` to document new entry points and examples.
-   * Add comments (especially in Korean) to clarify algorithmic decisions.
+   * Add Korean comments to clarify algorithmic decisions.
 
-Always respect the **stable vs experimental** separation and the **non-destructive update** policy unless instructed otherwise.
+Always respect the **“default = latest, suffix = archived”** model and the **non-destructive update** policy unless the user explicitly asks for a different behaviour.
 
 ```
 
 ---
+
