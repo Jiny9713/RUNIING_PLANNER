@@ -208,3 +208,20 @@ def test_single_week_plan_returned_when_race_within_same_week() -> None:
     assert week["end_date"] == race_date
     assert "recent_weekly_km_used" in week
     assert "actual_weekly_km" in week
+
+
+def test_weekly_training_days_three_limits_quality_sessions() -> None:
+    config = build_config(weekly_training_days=3)
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    run_days = sum(1 for day in plan["days"] if day["session_type"] != "Rest / Mobility")
+    assert run_days <= 4
+    assert plan["summary"]["quality_sessions"] <= 1
+
+
+def test_weekly_training_days_six_increases_run_days() -> None:
+    config = build_config(weekly_training_days=6)
+    plan = generate_week_plan(config, start_date=BASE_START)
+
+    run_days = sum(1 for day in plan["days"] if day["session_type"] != "Rest / Mobility")
+    assert run_days >= 6

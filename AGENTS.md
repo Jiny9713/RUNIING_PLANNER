@@ -4,8 +4,8 @@
 
 This repository contains a marathon training planner with:
 
-- A core planning engine in `planner_core.py` (current default)
-- A Streamlit web UI in `app_streamlit.py` (current default UI)
+- A core planning engine in `planner_core.py` (current default: injury-aware + weekly training days + multi-week API)
+- Streamlit web UIs (`app_streamlit.py` is the latest v1.3 interface, older ones are archived with suffixes)
 - Scenario-based tests in `tests/`
 - A coaching philosophy document in `Coach.md`
 
@@ -38,12 +38,10 @@ The goal is to maintain and extend this system as a **stable, deployable web app
 
 * Older or experimental versions are kept as **versioned copies** with suffixes:
 
-  * `planner_core_v1_0.py`
-  * `planner_core_v1_1.py`
-  * `app_streamlit_v1_0.py`
-  * `app_streamlit_v1_1.py`
-  * `tests/test_planner_core_v1_1.py`
-  * Or under folders like `legacy_versions/`, `experiments/`, `v1_1/`, etc.
+  * `planner_core_v1_0.py`, `planner_core_v1_1.py`, `planner_core_v1_2.py`
+  * `app_streamlit_v1_0.py`, `app_streamlit_v1_1.py`, `app_streamlit_v1_2.py`, `app_streamlit_v1_3.py`
+  * `tests/test_planner_core_v1_0.py`, `tests/test_planner_core_v1_1.py`, `tests/test_planner_core_v1_2.py`
+  * Or under folders like `legacy_versions/`, `experiments/`, `v1_x/`, etc.
 
 * These snapshots must **not** be deleted or heavily rewritten unless explicitly requested.
 
@@ -174,17 +172,23 @@ Responsibilities:
   * Goal marathon time (HH:MM:SS)
   * Current MP (MM:SS per km)
   * Additional flags (e.g. last week’s reduction reason / injury flag) if they are part of the current default.
+  * Weekly training days slider (v1.3) with guidance copy
 
-* Calls the default `generate_week_plan` and renders:
+* Calls the default `generate_week_plan` / `generate_multi_week_plan` and renders:
 
   * Weekly summary metrics:
 
     * Phase, goal_mode, target_weekly_km, planned_weekly_km,
-      long_run_distance, long_run_stage, quality_sessions
+      long_run_distance, long_run_stage
   * A day-by-day table:
 
     * Date, weekday, session type, distance, pace range, notes
-  * Optional coach notes section.
+  * Pace-zone overview + coach notes section.
+
+* Multi-week mode (v1.3 default) additionally offers:
+
+  * Editable weekly table for “실제 주간 km” with an explicit 업데이트 버튼.
+  * Auto-generated training 요일 패턴, taper/race assumptions, phase narratives, and a planned vs actual Altair chart.
 
 When adding new UIs:
 

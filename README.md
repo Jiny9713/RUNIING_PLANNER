@@ -9,10 +9,11 @@ Running_Planner/
 ├── planner_core_v1_0.py        # v1.0 엔진 (injury flag 없음)
 ├── planner_core_v1_1.py        # v1.0 엔진 기반 injury-aware 휴리스틱 스냅샷
 ├── planner_core_v1_2.py        # v1.2 엔진 보존본
-├── app_streamlit.py            # 기본 Streamlit UI (1주/멀티 주간 모드 통합)
+├── app_streamlit.py            # 기본 Streamlit UI v1.3 (1주/멀티 주간 모드 통합)
 ├── app_streamlit_v1_0.py       # v1.0 전용 UI
 ├── app_streamlit_v1_1.py       # planner_core_v1_1 전용 UI
 ├── app_streamlit_v1_2.py       # v1.2 실험 UI 보존본
+├── app_streamlit_v1_3.py       # v1.3 UI 보존본/개별 실행
 ├── tests/
 │   ├── test_planner_core.py    # 기본 엔진 시나리오 + v1.2 멀티 주간 테스트
 │   ├── test_planner_core_v1_0.py
@@ -42,6 +43,7 @@ streamlit run app_streamlit_v1_0.py
 streamlit run app_streamlit_v1_1.py
 ```
 브라우저가 열리면 사이드바 입력을 채운 뒤 **1주 플랜 생성** 버튼을 눌러 단일 주차 플랜을 확인하거나, **멀티 주간 플랜 생성** 버튼을 눌러 전체 사이클을 생성할 수 있습니다. 기본 UI에는 “지난주 거리 상태” 라디오가 추가되어 `injury_flag`를 설정할 수 있습니다.
+주간 훈련 일수 슬라이더(3~7일)는 품질 세션 수/주간 빈도를 조정하며, 상단에는 목표 페이스/훈련 페이스 요약 카드가 표시됩니다.
 
 ## 필요한 입력 (PlanConfig)
 | 필드 | 설명 |
@@ -52,8 +54,9 @@ streamlit run app_streamlit_v1_1.py
 | `goal_marathon_time` | 목표 마라톤 기록 (HH:MM 또는 HH:MM:SS) |
 | `current_mp` | 현재 마라톤 페이스 (MM:SS) |
 | `injury_flag` | 지난주 감소 원인이 부상/질병인지 여부 (`app_streamlit.py`의 라디오로 설정) |
+| `weekly_training_days` | 주간 훈련 일수 (v1.3 슬라이더, 3~7일 중 선택) |
 
-`generate_week_plan`은 위 값을 바탕으로 주간 목표 거리, 품질 세션 수, 롱런 단계/거리, 일자별 세션 정보를 담은 dict를 반환합니다. `generate_week_plan_v1_2`는 지난 주 실제 km override를 받을 수 있고, `generate_multi_week_plan_v1_2`는 실제 주간 km 리스트를 활용해 멀티 주간 플랜을 생성합니다. Streamlit UI도 동일한 엔진을 호출하므로 CLI·웹 어디서든 일관된 플랜을 확인할 수 있습니다.
+`generate_week_plan`은 위 값을 바탕으로 주간 목표 거리, 품질 세션 수, 롱런 단계/거리, 일자별 세션 정보를 담은 dict를 반환합니다. `weekly_training_days`(선택)는 주간 총 훈련 일수/품질 세션 상한만 조정하며, 전체 볼륨 계산식은 그대로 유지됩니다. `generate_week_plan_v1_2`는 지난 주 실제 km override를 받을 수 있고, `generate_multi_week_plan_v1_2`는 실제 주간 km 리스트를 활용해 멀티 주간 플랜을 생성합니다. Streamlit UI도 동일한 엔진을 호출하므로 CLI·웹 어디서든 일관된 플랜을 확인할 수 있습니다.
 
 ## 예시 입력/출력
 ```

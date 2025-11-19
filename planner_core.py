@@ -51,6 +51,7 @@ class PlanConfig:
     goal_marathon_time: str
     current_mp: str
     injury_flag: bool = False
+    weekly_training_days: Optional[int] = None
 
 
 @dataclass
@@ -277,7 +278,12 @@ class Planner:
         self.mp_current_sec = pace_to_seconds(config.current_mp)
         self.goal_mode = compute_goal_mode(self.mp_target_sec, self.mp_current_sec)
         self.paces = compute_paces(self.goal_mode, self.mp_target_sec)
-        self.weekly_frequency = derive_weekly_frequency(config.recent_weekly_km)
+        base_freq = derive_weekly_frequency(config.recent_weekly_km)
+        if config.weekly_training_days is not None:
+            days = max(3, min(int(config.weekly_training_days), 7))
+            self.weekly_frequency = min(days, 6)
+        else:
+            self.weekly_frequency = base_freq
         self.history = build_long_run_history(config.recent_long_km)
         self.stage3_history = sum(1 for d in self.history[-6:] if 26 <= d < 30)
         self.stage4_history = sum(1 for d in self.history[-6:] if d >= 30)
