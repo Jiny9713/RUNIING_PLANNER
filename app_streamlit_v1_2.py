@@ -228,6 +228,7 @@ st.title("마라톤 주간 플래너 v1.2")
 st.caption("Actual mileage & multi-week 시나리오 (실험 버전)")
 
 _init_state()
+st.session_state.setdefault("multi_plan_v1_2", None)
 
 with st.sidebar:
     st.header("입력 값")
@@ -315,42 +316,47 @@ else:
     if generate_multi:
         if race_date < start_date:
             st.error("레이스 날짜는 플랜 시작일 이후여야 합니다.")
+            st.session_state["multi_plan_v1_2"] = None
         else:
-            plan = generate_multi_week_plan_v1_2(
-                config,
-                start_date=start_date,
-                race_date=race_date,
-                actual_weekly_km=actual_weekly_entries,
-            )
-            weeks = plan["weeks"]
-            if not weeks:
-                st.warning("생성된 주차가 없습니다. 입력 값을 확인해 주세요.")
-            else:
-                st.subheader("사이클 개요")
-                current_week_index = render_multi_week_banner(weeks, race_date)
-                st.subheader("주간 계획 vs 실제 거리")
-                render_km_chart(weeks)
-                st.subheader("주차별 요약")
-                render_weeks_table(
-                    weeks,
-                    current_week_index=current_week_index,
+            try:
+                plan = generate_multi_week_plan_v1_2(
+                    config,
+                    start_date=start_date,
                     race_date=race_date,
+                    actual_weekly_km=actual_weekly_entries,
                 )
-                options = [f"{week['index'] + 1}주차 ({week['start_date'].isoformat()})" for week in weeks]
-                selected_label = st.selectbox("상세 확인 주차", options)
-                selected_index = options.index(selected_label)
-                selected_week = weeks[selected_index]
-                st.markdown(f"### {selected_week['index'] + 1}주차 상세")
-                render_summary(selected_week["summary"])
-                render_table(selected_week["days"])
-                actual_value = selected_week["actual_weekly_km"]
-                actual_str = "-" if actual_value is None else f"{actual_value:.1f}"
-                st.markdown(
-                    f"- 사용한 지난 주 km: {selected_week['recent_weekly_km_used']:.1f} / 실제 주간 km: {actual_str}"
-                )
-                if selected_week["notes"]:
-                    st.markdown("**코치 메모**")
-                    for note in selected_week["notes"]:
-                        st.write(f"- {note}")
+            except ValueError as err:
+                st.error(f"플랜 생성 중 오류가 발생했습니다: {err}")
+                st.session_state["multi_plan_v1_2"] = None
+            else:
+                st.session_state["multi_plan_v1_2"] = plan
+
+    plan = st.session_state.get("multi_plan_v1_2")
+    if plan and plan.get("weeks"):
+        weeks = plan["weeks"]
+        st.subheader("사이클 개요")
+        current_week_index = render_multi_week_banner(weeks, race_date)
+        st.subheader("주간 계획 vs 실제 거리")
+        render_km_chart(weeks)
+        st.subheader("주차별 요약")
+        render_weeks_table(
+            weeks,
+            current_week_index=current_week_index,
+            race_date=race_date,
+        )
+        options = [f"{week['index'] + 1}주차 ({week['start_date'].isoformat()})" for week in weeks]
+        selected_label = st.selectbox("상세 확인 주차", options)
+        selected_index = options.index(selected_label)
+        selected_week = weeks[selected_index]
+        st.markdown(f"### {selected_week['index'] + 1}주차 상세")
+        render_summary(selected_week["summary"])
+        render_table(selected_week["days"])
+        actual_value = selected_week["actual_weekly_km"]
+        actual_str = "-" if actual_value is None else f"{actual_value:.1f}"
+        st.markdown(f"- 사용한 지난 주 km: {selected_week['recent_weekly_km_used']:.1f} / 실제 주간 km: {actual_str}")
+        if selected_week["notes"]:
+            st.markdown("**코치 메모**")
+            for note in selected_week["notes"]:
+                st.write(f"- {note}")
     else:
-        st.info("완료한 주차가 있다면 위 슬라이더와 입력란을 채우고 '멀티 주간 플랜 생성' 버튼을 눌러 주세요.")
+        st.info("입력을 확인한 뒤 '멀티 주간 플랜 생성' 버튼을 눌러 주세요.")
