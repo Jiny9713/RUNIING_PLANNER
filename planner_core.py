@@ -14,7 +14,7 @@ Goal-mode 기반 · 단계별 강도 자동 조정 · 안전 스위치 내장형
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -442,10 +442,17 @@ class Planner:
 
         for idx in range(7):
             current_date = self.start_date + timedelta(days=idx)
-            label = WEEKDAY_LABELS[idx]
+            label = WEEKDAY_LABELS[current_date.weekday()]
             slot = schedule.get(idx, "Rest")
             if slot == "Long":
-                plan = build_long_run_session(current_date, label, stage, long_distance, self.paces[f"long_{stage}"], self.goal_mode)
+                plan = build_long_run_session(
+                    current_date,
+                    label,
+                    stage,
+                    long_distance,
+                    self.paces[f"long_{stage}"],
+                    self.goal_mode,
+                )
             elif slot == "Quality":
                 plan = self.build_point_session(current_date, label)
             elif slot == "Easy":
@@ -528,3 +535,63 @@ def generate_week_plan(config: PlanConfig, *, start_date: Optional[date] = None)
         for plan in result.plans
     ]
     return {'summary': summary, 'days': days, 'notes': notes}
+
+
+def generate_week_plan_v1_2(
+    config: PlanConfig,
+    *,
+    start_date: Optional[date] = None,
+    override_recent_weekly_km: Optional[float] = None,
+) -> Dict[str, Any]:
+    recent = config.recent_weekly_km
+    if override_recent_weekly_km is not None and override_recent_weekly_km > 0:
+        recent = override_recent_weekly_km
+    config_override = replace(config, recent_weekly_km=recent)
+    return generate_week_plan(config_override, start_date=start_date)
+
+
+def generate_multi_week_plan_v1_2(
+    base_config: PlanConfig,
+    *,
+    start_date: date,
+    race_date: date,
+    actual_weekly_km: Optional[List[float]] = None,
+) -> Dict[str, Any]:
+    if start_date > race_date:
+        raise ValueError("start_date must be on or before race_date")
+    actual_weekly_km = actual_weekly_km or []
+    weeks: List[Dict[str, Any]] = []
+    idx = 0
+    current_start = start_date
+    recent = base_config.recent_weekly_km
+    while current_start <= race_date:
+        current_end = min(current_start + timedelta(days=6), race_date)
+        week_config = replace(base_config, recent_weekly_km=recent)
+        week_plan = generate_week_plan(week_config, start_date=current_start)
+        actual_this_week = actual_weekly_km[idx] if idx < len(actual_weekly_km) else None
+        weeks.append(
+            {
+                'index': idx,
+                'start_date': current_start,
+                'end_date': current_end,
+                'summary': week_plan['summary'],
+                'days': week_plan['days'],
+                'notes': week_plan['notes'],
+                'recent_weekly_km_used': recent,
+                'actual_weekly_km': actual_this_week,
+            }
+        )
+        if actual_this_week is not None:
+            recent = actual_this_week
+        else:
+            recent = week_plan['summary']['planned_weekly_km']
+        current_start += timedelta(days=7)
+        idx += 1
+    config_snapshot = {
+        'race_date': base_config.race_date,
+        'start_date': start_date,
+        'recent_weekly_km': base_config.recent_weekly_km,
+        'recent_long_km': base_config.recent_long_km,
+        'goal_marathon_time': base_config.goal_marathon_time,
+    }
+    return {'weeks': weeks, 'config_snapshot': config_snapshot}

@@ -181,54 +181,15 @@ def render_km_chart(weeks: List[Dict[str, Any]]) -> None:
     st.line_chart(chart_df, height=280, use_container_width=True)
 
 
-def render_weeks_table(
-    weeks: List[Dict[str, Any]],
-    *,
-    current_week_index: Optional[int],
-    race_date: date,
-) -> None:
-    rows: List[Dict[str, object]] = []
-    previous_planned: Optional[float] = None
-    for week in weeks:
-        summary = week["summary"]
-        planned = summary["planned_weekly_km"]
-        actual = week["actual_weekly_km"]
-        tag = ""
-        if week["start_date"] <= race_date <= week["end_date"]:
-            tag = "RACE WEEK"
-        elif summary["phase"] == "TAPER":
-            tag = "TAPER"
-        elif previous_planned is not None and planned < previous_planned * 0.85:
-            tag = "CUTBACK"
-        elif previous_planned is not None and planned >= previous_planned * 1.25:
-            tag = "VOL↑ 25%"
-        if current_week_index == week["index"]:
-            tag = (tag + " ⭐ 현재 주").strip()
-        week_label = f"{week['index'] + 1}주차"
-        rows.append(
-            {
-                "주차": week_label,
-                "시작일": week["start_date"].isoformat(),
-                "Phase": summary["phase"],
-                "목표 km": f"{summary['target_weekly_km']:.1f}",
-                "계획 km": f"{planned:.1f}",
-                "롱런": f"{summary['long_run_distance']:.1f}",
-                "품질 세션": summary["quality_sessions"],
-                "사용한 지난주 km": f"{week['recent_weekly_km_used']:.1f}",
-                "실제 주간 km": "" if actual is None else f"{actual:.1f}",
-                "비고": tag,
-            }
-        )
-        previous_planned = planned
-    st.dataframe(rows, use_container_width=True)
-
-
 st.set_page_config(page_title="마라톤 주간 플래너 v1.2", layout="wide")
 st.title("마라톤 주간 플래너 v1.2")
 st.caption("Actual mileage & multi-week 시나리오 (실험 버전)")
 
 _init_state()
 st.session_state.setdefault("multi_plan_v1_2", None)
+st.session_state.setdefault("multi_config_v1_2", None)
+st.session_state.setdefault("multi_start_date_v1_2", None)
+st.session_state.setdefault("multi_race_date_v1_2", None)
 
 with st.sidebar:
     st.header("입력 값")
@@ -253,37 +214,6 @@ with st.sidebar:
     st.text_input("마라톤 PB (HH:MM:SS)", key="pb_time_v1_2", on_change=_sync_pb_from_time)
     st.text_input("마라톤 PB 페이스 (MM:SS)", key="pb_pace_v1_2", on_change=_sync_pb_from_pace)
 
-    completed_weeks = 0
-    actual_weekly_entries: Optional[List[float]] = None
-    ongoing_label = "진행 중 사이클 재조정 (실제 수행 반영)"
-    new_cycle_label = "새 사이클 설계 (처음 플랜 생성)"
-    multi_cycle_mode = new_cycle_label
-    if mode == "멀티 주간 플랜 (v1.2)":
-        multi_cycle_mode = st.radio(
-            "멀티 주간 진행 옵션",
-            (new_cycle_label, ongoing_label),
-            index=0,
-        )
-        if multi_cycle_mode == ongoing_label:
-            completed_weeks = st.slider(
-                "이미 완료한 주차 수",
-                min_value=0,
-                max_value=24,
-                value=0,
-                step=1,
-            )
-            actual_weekly_entries = []
-            for idx in range(completed_weeks):
-                km = st.number_input(
-                    f"{idx + 1}주차 실제 주간 거리 (km)",
-                    min_value=0.0,
-                    max_value=300.0,
-                    step=1.0,
-                    key=f"actual_week_input_{idx + 1}",
-                )
-                actual_weekly_entries.append(float(km))
-        else:
-            actual_weekly_entries = None
 
 config = PlanConfig(
     race_date=race_date,
@@ -312,38 +242,153 @@ if mode == "1주 플랜 (v1.2)":
     else:
         st.info("왼쪽 입력을 확인한 뒤 '1주 플랜 생성' 버튼을 눌러 주세요.")
 else:
-    generate_multi = st.button("멀티 주간 플랜 생성")
+    col_gen, col_reset = st.columns([2, 1])
+    with col_gen:
+        generate_multi = st.button("멀티 주간 플랜 생성")
+    with col_reset:
+        if st.button("현재 멀티 플랜 초기화", key="reset_multi_plan_v1_2"):
+            st.session_state["multi_plan_v1_2"] = None
+            st.session_state["multi_config_v1_2"] = None
+            st.session_state["multi_start_date_v1_2"] = None
+            st.session_state["multi_race_date_v1_2"] = None
+            st.success("저장된 멀티 주간 플랜을 초기화했습니다.")
+
     if generate_multi:
         if race_date < start_date:
             st.error("레이스 날짜는 플랜 시작일 이후여야 합니다.")
             st.session_state["multi_plan_v1_2"] = None
+            st.session_state["multi_config_v1_2"] = None
+            st.session_state["multi_start_date_v1_2"] = None
+            st.session_state["multi_race_date_v1_2"] = None
         else:
             try:
                 plan = generate_multi_week_plan_v1_2(
                     config,
                     start_date=start_date,
                     race_date=race_date,
-                    actual_weekly_km=actual_weekly_entries,
+                    actual_weekly_km=None,
                 )
             except ValueError as err:
                 st.error(f"플랜 생성 중 오류가 발생했습니다: {err}")
                 st.session_state["multi_plan_v1_2"] = None
+                st.session_state["multi_config_v1_2"] = None
+                st.session_state["multi_start_date_v1_2"] = None
+                st.session_state["multi_race_date_v1_2"] = None
             else:
+                st.session_state["multi_config_v1_2"] = config
+                st.session_state["multi_start_date_v1_2"] = start_date
+                st.session_state["multi_race_date_v1_2"] = race_date
                 st.session_state["multi_plan_v1_2"] = plan
 
-    plan = st.session_state.get("multi_plan_v1_2")
-    if plan and plan.get("weeks"):
+    plan_in_state = st.session_state.get("multi_plan_v1_2")
+    base_config = st.session_state.get("multi_config_v1_2")
+    stored_start = st.session_state.get("multi_start_date_v1_2")
+    stored_race = st.session_state.get("multi_race_date_v1_2")
+
+    if plan_in_state and plan_in_state.get("weeks"):
+        table_race_date = stored_race or race_date
+        weeks_for_editor = plan_in_state["weeks"]
+        table_rows: List[Dict[str, Any]] = []
+        previous_planned: Optional[float] = None
+        today = date.today()
+        for week in weeks_for_editor:
+            summary = week["summary"]
+            planned = summary["planned_weekly_km"]
+            actual = week["actual_weekly_km"]
+            tag = ""
+            if week["start_date"] <= table_race_date <= week["end_date"]:
+                tag = "RACE WEEK"
+            elif summary["phase"] == "TAPER":
+                tag = "TAPER"
+            elif previous_planned is not None and planned < previous_planned * 0.85:
+                tag = "CUTBACK"
+            elif previous_planned is not None and planned >= previous_planned * 1.25:
+                tag = "VOL↑ 25%"
+            if week["start_date"] <= today <= week["end_date"]:
+                tag = (tag + " ⭐ 현재 주").strip()
+            table_rows.append(
+                {
+                    "주차": week["index"] + 1,
+                    "시작일": week["start_date"].isoformat(),
+                    "Phase": summary["phase"],
+                    "목표 km": planned,
+                    "롱런 km": summary["long_run_distance"],
+                    "사용한 지난주 km": week["recent_weekly_km_used"],
+                    "실제 주간 km": actual,
+                    "비고": tag,
+                }
+            )
+            previous_planned = planned
+
+        table_df = pd.DataFrame(table_rows)
+        header_col, btn_col = st.columns([3, 1])
+        with header_col:
+            st.subheader("주차별 요약")
+        with btn_col:
+            update_clicked = st.button("실제 주간 km로 플랜 업데이트")
+        column_config = {
+            "주차": st.column_config.NumberColumn("주차", disabled=True),
+            "시작일": st.column_config.TextColumn("시작일", disabled=True),
+            "Phase": st.column_config.TextColumn("Phase", disabled=True),
+            "목표 km": st.column_config.NumberColumn("목표 km", disabled=True, format="%.1f"),
+            "롱런 km": st.column_config.NumberColumn("롱런 km", disabled=True, format="%.1f"),
+            "사용한 지난주 km": st.column_config.NumberColumn("사용한 지난주 km", disabled=True, format="%.1f"),
+            "실제 주간 km": st.column_config.NumberColumn("실제 주간 km", format="%.1f"),
+            "비고": st.column_config.TextColumn("비고", disabled=True),
+        }
+        edited_df = st.data_editor(
+            table_df,
+            key="multi_week_table_v1_2",
+            hide_index=True,
+            num_rows="fixed",
+            use_container_width=True,
+            column_config=column_config,
+        )
+        plan = plan_in_state
+        if update_clicked:
+            actual_values: List[Optional[float]] = []
+            if "실제 주간 km" in edited_df.columns:
+                for value in edited_df["실제 주간 km"].tolist():
+                    if value is None or pd.isna(value):
+                        actual_values.append(None)
+                    else:
+                        actual_values.append(float(value))
+            else:
+                actual_values = [None] * len(weeks_for_editor)
+
+            if base_config and stored_start and stored_race:
+                try:
+                    updated_plan = generate_multi_week_plan_v1_2(
+                        base_config,
+                        start_date=stored_start,
+                        race_date=stored_race,
+                        actual_weekly_km=actual_values,
+                    )
+                except ValueError as err:
+                    st.error(f"플랜 업데이트 중 오류가 발생했습니다: {err}")
+                else:
+                    plan = updated_plan
+                    st.session_state["multi_plan_v1_2"] = updated_plan
+
         weeks = plan["weeks"]
+        snapshot = plan.get("config_snapshot", {})
+        snapshot_race = snapshot.get("race_date", stored_race or race_date)
+        snapshot_start = snapshot.get("start_date", stored_start or start_date)
+        snapshot_recent = snapshot.get("recent_weekly_km", recent_weekly_km)
+        snapshot_long = snapshot.get("recent_long_km", recent_long_km)
+        snapshot_goal = snapshot.get("goal_marathon_time", st.session_state.goal_time_v1_2.strip())
+        st.caption(
+            "이 플랜은 생성 시점 기준: "
+            f"레이스 {snapshot_race}, "
+            f"플랜 시작일 {snapshot_start}, "
+            f"지난 주 {snapshot_recent:.1f} km, "
+            f"롱런 {snapshot_long:.1f} km, 목표 기록 {snapshot_goal} 기준입니다."
+        )
         st.subheader("사이클 개요")
-        current_week_index = render_multi_week_banner(weeks, race_date)
+        current_week_index = render_multi_week_banner(weeks, stored_race or race_date)
         st.subheader("주간 계획 vs 실제 거리")
         render_km_chart(weeks)
-        st.subheader("주차별 요약")
-        render_weeks_table(
-            weeks,
-            current_week_index=current_week_index,
-            race_date=race_date,
-        )
+        # data_editor already rendered above
         options = [f"{week['index'] + 1}주차 ({week['start_date'].isoformat()})" for week in weeks]
         selected_label = st.selectbox("상세 확인 주차", options)
         selected_index = options.index(selected_label)

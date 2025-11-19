@@ -108,7 +108,7 @@ def generate_multi_week_plan_v1_2(
             recent = base_config.recent_weekly_km
         else:
             actual_prev = actual_weekly_km[idx - 1] if idx - 1 < len(actual_weekly_km) else None
-            if actual_prev is not None and actual_prev > 0:
+            if actual_prev is not None:
                 recent = actual_prev
             else:
                 recent = weeks[-1]["summary"]["planned_weekly_km"]
@@ -129,7 +129,14 @@ def generate_multi_week_plan_v1_2(
         )
         current_start += timedelta(days=7)
         idx += 1
-    return {"weeks": weeks}
+    config_snapshot = {
+        "race_date": base_config.race_date,
+        "start_date": start_date,
+        "recent_weekly_km": base_config.recent_weekly_km,
+        "recent_long_km": base_config.recent_long_km,
+        "goal_marathon_time": base_config.goal_marathon_time,
+    }
+    return {"weeks": weeks, "config_snapshot": config_snapshot}
 
 
 __all__ = [
